@@ -1,7 +1,7 @@
 import numpy as np
 
 
-def rotvec2mat(u, phi):
+def _rotvec2mat(u, phi):
     """Convert rotation from axis and angle to matrix representation"""
 
     phi = np.squeeze(phi)
@@ -26,7 +26,7 @@ def rotvec2mat(u, phi):
     return res
 
 
-def det2lab_xds(
+def _det2lab_xds(
         pixels_coord, frame_number,
         starting_frame, starting_angle, oscillation_angle,
         rotation_axis,
@@ -66,17 +66,17 @@ def det2lab_xds(
         np.tile(wavevector, (unit_scattering_vector.shape[1], 1)).T
     #rotating
     if phi.size == 1:
-        h = np.dot(rotvec2mat(rotation_axis.T, -2 * np.pi * phi / 360), h)
+        h = np.dot(_rotvec2mat(rotation_axis.T, -2 * np.pi * phi / 360), h)
     else:
         for i in range(phi.size):
             h[:, [i]] = np.dot(
-                rotvec2mat(rotation_axis.T, -2 * np.pi * phi[i] / 360), h[:, [i]])
+                _rotvec2mat(rotation_axis.T, -2 * np.pi * phi[i] / 360), h[:, [i]])
 
     return h, scattering_vector_mm, unit_scattering_vector
 
 
 def test_rotvec2mat():
-    print (rotvec2mat(np.array([1, 2, 3]), -2 * np.pi * 90 / 360))
+    print((_rotvec2mat(np.array([1, 2, 3]), -2 * np.pi * 90 / 360)))
 
 
 def test_det2lab_xds():
@@ -138,7 +138,7 @@ def test_det2lab_xds():
                                   [-3.449634, 4.595787, -2.116248],
                                   [-7.040996, -6.77977, -2.671483]])
 
-    laboratory_bragg_coordinates = det2lab_xds(pixels_coord, frame_number, **instrument_parameters)[
+    laboratory_bragg_coordinates = _det2lab_xds(pixels_coord, frame_number, **instrument_parameters)[
         0]  # the operator **should unpack the instrumental parameters i believe
     fractional_coordinates = np.dot(unit_cell_vectors.T, laboratory_bragg_coordinates)
     assert np.all(np.abs(fractional_coordinates.T - hkl) < 0.15), "Something seems to be wrong"

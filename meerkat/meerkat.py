@@ -1,13 +1,13 @@
 import numpy as np
 import fabio
 import re
-import os
-from .det2lab_xds import det2lab_xds, rotvec2mat
+from pathlib import Path
+from .det2lab_xds import _det2lab_xds, _rotvec2mat
 import h5py
 from numpy.linalg import norm
 
 
-def r_get_numbers(matchgroup, num):
+def _r_get_numbers(matchgroup, num):
     """A helper function which can be used similarly to fscanf(fid,'%f',num) to extract num arguments from the regex iterator"""
     res = []
     for i in range(num):
@@ -15,24 +15,26 @@ def r_get_numbers(matchgroup, num):
     return np.array(res)
 
 
-def read_XPARM(path_to_XPARM='.'):
+def _read_XPARM(path_to_XPARM='.'):
     """Loads the instrumental geometry information from the XPARM.XDS or GXPARM.XDS files at the proposed location"""
 
-    if not os.path.exists(path_to_XPARM):
-        raise Exception("path " + path_to_XPARM + "does not exist")
+    path_to_XPARM_po = Path(path_to_XPARM)
 
-    if os.path.isdir(path_to_XPARM):
-        candidate = os.path.join(path_to_XPARM, 'GXPARM.XDS')
-        if os.path.isfile(candidate):
-            path_to_XPARM = candidate
+    if not path_to_XPARM_po.exists():
+        raise Exception(f"path {path_to_XPARM_po} does not exist")
+
+    if path_to_XPARM_po.is_dir():
+        candidate = path_to_XPARM_po /  'GXPARM.XDS'
+        if candidate.is_file():
+            path_to_XPARM_po = candidate
         else:
-            candidate = os.path.join(path_to_XPARM, 'XPARM.XDS')
-            if os.path.isfile(candidate):
-                path_to_XPARM = candidate
+            candidate = path_to_XPARM_po / 'XPARM.XDS'
+            if candidate.is_file():
+                path_to_XPARM_po = candidate
             else:
-                raise Exception("files GXPARM.XDS and XPARM.XDS are not found in the folder " + path_to_XPARM)
+                raise Exception(f"files GXPARM.XDS and XPARM.XDS are not found in the folder {path_to_XPARM_po}")
 
-    with open(path_to_XPARM) as f:
+    with open(path_to_XPARM_po) as f:
         f.readline()  # skip header
         text = f.read()
 
@@ -40,40 +42,40 @@ def read_XPARM(path_to_XPARM='.'):
     f = re.compile('-?\d+\.?\d*').finditer(text)
 
     try:
-        result = dict(starting_frame=r_get_numbers(f, 1),
-                      starting_angle=r_get_numbers(f, 1),
-                      oscillation_angle=r_get_numbers(f, 1),
-                      rotation_axis=r_get_numbers(f, 3),
+        result = dict(starting_frame=_r_get_numbers(f, 1),
+                      starting_angle=_r_get_numbers(f, 1),
+                      oscillation_angle=_r_get_numbers(f, 1),
+                      rotation_axis=_r_get_numbers(f, 3),
 
-                      wavelength=r_get_numbers(f, 1),
-                      wavevector=r_get_numbers(f, 3),
+                      wavelength=_r_get_numbers(f, 1),
+                      wavevector=_r_get_numbers(f, 3),
 
-                      space_group_nr=r_get_numbers(f, 1),
-                      cell=r_get_numbers(f, 6),
-                      unit_cell_vectors=np.reshape(r_get_numbers(f, 9), (3, 3)),
+                      space_group_nr=_r_get_numbers(f, 1),
+                      cell=_r_get_numbers(f, 6),
+                      unit_cell_vectors=np.reshape(_r_get_numbers(f, 9), (3, 3)),
 
-                      number_of_detector_segments=r_get_numbers(f, 1),
-                      NX=r_get_numbers(f, 1),
-                      NY=r_get_numbers(f, 1),
-                      pixelsize_x=r_get_numbers(f, 1),
-                      pixelsize_y=r_get_numbers(f, 1),
+                      number_of_detector_segments=_r_get_numbers(f, 1),
+                      NX=_r_get_numbers(f, 1),
+                      NY=_r_get_numbers(f, 1),
+                      pixelsize_x=_r_get_numbers(f, 1),
+                      pixelsize_y=_r_get_numbers(f, 1),
 
-                      x_center=r_get_numbers(f, 1),
-                      y_center=r_get_numbers(f, 1),
-                      distance_to_detector=r_get_numbers(f, 1),
+                      x_center=_r_get_numbers(f, 1),
+                      y_center=_r_get_numbers(f, 1),
+                      distance_to_detector=_r_get_numbers(f, 1),
 
-                      detector_x=r_get_numbers(f, 3),
-                      detector_y=r_get_numbers(f, 3),
-                      detector_normal=r_get_numbers(f, 3),
-                      detector_segment_crossection=r_get_numbers(f, 5),
-                      detector_segment_geometry=r_get_numbers(f, 9))
+                      detector_x=_r_get_numbers(f, 3),
+                      detector_y=_r_get_numbers(f, 3),
+                      detector_normal=_r_get_numbers(f, 3),
+                      detector_segment_crossection=_r_get_numbers(f, 5),
+                      detector_segment_geometry=_r_get_numbers(f, 9))
 
     except StopIteration:
         raise Exception('Wrong format of the XPARM.XDS file')
 
     # check there is nothing left
     try:
-        f.next()
+        next(f)
     except StopIteration:
         pass
     else:
@@ -82,12 +84,12 @@ def read_XPARM(path_to_XPARM='.'):
     return result
 
 
-def cov2corr(inp):
+def _cov2corr(inp):
     sigma = np.sqrt(np.diag(inp))
     return sigma, inp / np.outer(sigma, sigma)
 
 
-def air_absorption_coefficient(medium, wavelength):
+def _air_absorption_coefficient(medium, wavelength):
     """ 
      The function returns linear absorbtion coefficient of selected medium at
      given x-ray wavelength [mm^-1]
@@ -200,9 +202,9 @@ def air_absorption_coefficient(medium, wavelength):
     return mu
 
 
-def create_h5py_with_large_cache(filename, cache_size_mb):
+def _create_h5py_with_large_cache(filename, cache_size_mb):
     """
-Allows to open the hdf5 file with specified cache size
+    Allows to open the hdf5 file with specified cache size
     """
     # h5py does not allow to control the cache size from the high level
     # we employ the workaround
@@ -218,7 +220,7 @@ Allows to open the hdf5 file with specified cache size
     return fin
 
 
-def accumulate_intensity(intensity,
+def _accumulate_intensity(intensity,
                          indices,
                          rebinned_data,
                          number_of_pixels_rebinned,
@@ -261,12 +263,18 @@ def accumulate_intensity(intensity,
         number_of_pixels_rebinned._id.write(mspace, fspace, old_count + no_accumulated_pixels)
 
 
-def correction_coefficients(h, instrument_parameters, medium, polarization_factor, polarization_plane_normal,
-                            wavelength, wavevector, detector_normal):
+def _correction_coefficients(h, 
+                             instrument_parameters, 
+                             medium, 
+                             polarization_factor, 
+                             polarization_plane_normal,
+                            wavelength, 
+                            wavevector, 
+                            detector_normal):
 
     [_, scattering_vector_mm, unit_scattering_vector] = det2lab_xds(h, 0, **instrument_parameters)
 
-    mu = air_absorption_coefficient(medium, wavelength)
+    mu = _air_absorption_coefficient(medium, wavelength)
     air_absorption = np.exp(
         -mu * np.sqrt(np.sum(scattering_vector_mm ** 2, axis=0)))  
     
@@ -327,6 +335,29 @@ def reconstruct_data(filename_template,
                      override=False,
                      scale=None,
                      keep_number_of_pixels=False):
+    """
+    Brief description of function which has lines no longer than this. (or so)
+
+    Parameters
+    ----------
+    sample : array_like
+        Data to histogram passed as a sequence of N arrays of length D, or
+        as an (N,D) array.
+    values : (N,) array_like or list of (N,) array_like
+        The data on which the statistic will be computed.  This must be
+        the same shape as `sample`, or a list of sequences - each with the
+        same shape as `sample`.  If `values` is such a list, the statistic
+        will be computed on each independently.
+    statistic : string or callable, optional
+        The statistic to compute (default is 'mean').
+        The following statistics are available:
+
+
+    Returns
+    -------
+    success : bool
+        The values of the selected statistic in each two-dimensional bin.
+    """
 
     def image_name(num):
         return filename_template % num  #test above
@@ -389,13 +420,15 @@ def reconstruct_data(filename_template,
 
     to_index = lambda c: np.around(step_size_inv[:,np.newaxis]*(c+maxind[:,np.newaxis])).astype(np.int64)
 
-    if output_filename is not None:
-        if os.path.exists(output_filename):
+    output_filename_po = Path(output_filename)
+
+    if output_filename_po is not None:
+        if output_filename_po.exists():
             if override:
-                os.remove(output_filename)
+                output_filename_po.unlink(missing_ok=False)
             else:
-                raise Exception('file ' + output_filename + ' already exists')
-        output_file = create_h5py_with_large_cache(output_filename, size_of_cache)
+                raise Exception(f'file {output_filename_po} already exists')
+        output_file = _create_h5py_with_large_cache(output_filename_po, size_of_cache)
 
     if all_in_memory:
         rebinned_data = np.zeros(np.prod(number_of_pixels),dtype=np.float_)
@@ -409,8 +442,8 @@ def reconstruct_data(filename_template,
         number_of_pixels_rebinned = output_file.create_dataset('number_of_pixels_rebinned', shape=number_of_pixels,
                                                                dtype='int', chunks=True)
 
-    #read_xparm
-    instrument_parameters = read_XPARM(path_to_XPARM)
+    #_read_XPARM
+    instrument_parameters = _read_XPARM(path_to_XPARM)
 
     unit_cell_vectors = instrument_parameters['unit_cell_vectors']
     starting_frame = instrument_parameters['starting_frame']
@@ -440,10 +473,10 @@ def reconstruct_data(filename_template,
 
 
     metric_tensor = np.dot(unit_cell_vectors, unit_cell_vectors.T)
-    [_, normalized_metric_tensor] = cov2corr(metric_tensor)
+    [_, normalized_metric_tensor] = _cov2corr(metric_tensor)
     transfrom_matrix = np.linalg.cholesky(np.linalg.inv(normalized_metric_tensor))
 
-    corrections = correction_coefficients(h, instrument_parameters, medium, polarization_factor,
+    corrections = _correction_coefficients(h, instrument_parameters, medium, polarization_factor,
                                           polarization_plane_normal, wavelength, wavevector, detector_normal)
 
 
@@ -453,7 +486,7 @@ def reconstruct_data(filename_template,
     h_starting = det2lab_xds(h, 0, **instrument_parameters)[0]
 
     for frame_number in np.arange(first_image, last_image+1, image_increment):
-        print ("reconstructing frame number %i" % frame_number)
+        print(("reconstructing frame number %i" % frame_number))
 
         image = get_image(image_name(frame_number))
         image = image[measured_pixels]
@@ -469,7 +502,7 @@ def reconstruct_data(filename_template,
             indices = to_index(fractional)
             del fractional
 
-            accumulate_intensity(image, indices, rebinned_data, number_of_pixels_rebinned, number_of_pixels,
+            _accumulate_intensity(image, indices, rebinned_data, number_of_pixels_rebinned, number_of_pixels,
                                  all_in_memory)
     
             
